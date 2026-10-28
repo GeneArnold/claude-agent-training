@@ -52,7 +52,7 @@ python lesson1_manual_loop.py
 
 **Lesson 4:** Put a web UI on the agent. Tokens stream to the browser in real-time. Tool calls appear inline. You see the agent think.
 
-**Lesson 5:** The payoff. A machine health agent that runs 12 system checks (disk, memory, CPU, network, security, Docker, thermal, updates, etc.) and synthesizes a prioritized report. Same pattern as Lesson 2, but solving a real problem. It also has a `send_notification` tool wired to [ntfy.sh](https://ntfy.sh/) — Claude decides, based on its own report, whether anything is worth pushing to your phone, and sends nothing at all when the machine is clean. That's the agent acting on its own judgment instead of just printing to a terminal nobody's watching.
+**Lesson 5:** The payoff. A machine health agent that runs 12 system checks (disk, memory, CPU, network, security, Docker, thermal, updates, etc.) and synthesizes a prioritized report. Same pattern as Lesson 2, but solving a real problem. It also has a `send_notification` tool wired to [ntfy.sh](https://ntfy.sh/) — Claude pushes exactly one phone notification every run, always, with the title/priority reflecting what it found. That's a **dead man's switch**: if the agent only notified on problems, a clean machine and a check that crashed before it ever ran would both look like silence — indistinguishable from each other. Notifying every time means silence can only ever mean one thing: the check didn't run.
 
 ## Requirements
 

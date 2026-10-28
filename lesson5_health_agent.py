@@ -9,6 +9,15 @@ Each health check category is a tool. Claude decides which to run,
 reads the results, and writes a prioritized report. Same pattern
 as Lesson 2 (Tool Runner + @beta_tool), but solving a real problem.
 
+Dead man's switch notifications: the agent sends exactly one phone
+notification every run — always, even when everything is healthy — instead
+of only notifying on problems. "Notify-on-problem-only" designs have a
+hidden failure mode: if the check never runs (crashes, loses its API key,
+the whole machine is down), you get silence, which is *indistinguishable*
+from silence because everything was fine. By always sending — severity
+just changes the title and priority — silence can only ever mean one
+thing: the check didn't run, and that itself is worth knowing.
+
 Run it:
   source .venv/bin/activate
   python lesson5_health_agent.py
@@ -17,7 +26,8 @@ The agent will:
   1. Run checks across all categories (disk, memory, security, etc.)
   2. Analyze the results
   3. Print a prioritized health report
-  4. Push a phone notification (via ntfy) if anything needs attention
+  4. Push a phone notification (via ntfy) every time — see "dead man's
+     switch" above
 
 One-time setup for notifications:
   1. Install the ntfy app (iOS/Android) or just open https://ntfy.sh/<topic>
@@ -32,8 +42,9 @@ One-time setup for notifications:
   4. (Optional) Self-hosting ntfy instead of using the public server? Point
      at it with one more line in .env — nothing else changes:
        NTFY_SERVER=https://your-ntfy-server.example.com
-  5. Run the agent. If something needs attention, your phone buzzes; if the
-     machine is clean, nothing is sent at all.
+  5. Run the agent. Your phone buzzes every run — "all clear" at low
+     priority if the machine's healthy, "urgent" if not. Either way, you
+     know the check actually ran.
 """
 
 import os
@@ -257,17 +268,22 @@ NTFY_VALID_PRIORITIES = {"min", "low", "default", "high", "urgent"}
 
 @beta_tool
 def send_notification(title: str, message: str, priority: str = "default") -> str:
-    """Push a phone/desktop notification via ntfy. Call this AT MOST ONCE,
-    after you've written the full report, and only if the CRITICAL or WARNING
-    sections contain real issues — skip it entirely for an all-clear machine,
-    there's no need to notify someone that nothing is wrong.
+    """Push a phone/desktop notification via ntfy. Call this EXACTLY ONCE,
+    always, after you've written the full report — even when everything is
+    healthy. Silence must never be the signal: if the agent only notifies on
+    problems, a clean report and a crashed/never-ran check look identical
+    (nothing arrives either way). Always sending means the person can tell
+    "checked, all good" apart from "didn't run."
 
     Args:
-        title: Short summary, e.g. "cerebro: 2 critical issues".
-        message: The CRITICAL and WARNING items only, in plain text — not the
-            full report. Keep it to what the person actually needs to see.
-        priority: One of min, low, default, high, urgent. Use "urgent" if
-            CRITICAL items exist, "high" if only WARNING items exist.
+        title: Short summary reflecting the worst severity found, e.g.
+            "cerebro: all clear", "cerebro: 1 warning", "cerebro: 2 critical".
+        message: If there are CRITICAL or WARNING items, list just those in
+            plain text — not the full report. If everything is healthy, a
+            one-line "all checks passed" is enough.
+        priority: One of min, low, default, high, urgent. Use "low" for an
+            all-clear, "high" if only WARNING items exist, "urgent" if any
+            CRITICAL items exist.
     """
     topic = os.environ.get("NTFY_TOPIC")
     if not topic:
@@ -310,8 +326,10 @@ def run_health_agent():
         "4. RECOMMENDATIONS — Improvements and maintenance suggestions\n\n"
         "Be specific. Include actual numbers (disk %, memory usage, error counts). "
         "Don't repeat raw command output — interpret it.\n\n"
-        "Finally, decide whether to call send_notification. Only call it if "
-        "CRITICAL or WARNING has real content — never for an all-clear report."
+        "Finally, call send_notification exactly once — always, even if the "
+        "machine is completely healthy. A notification means 'the check ran'; "
+        "no notification would be indistinguishable from the check never "
+        "running at all, so silence is never the right answer here."
     )
 
     print(f"\nTask: {task[:80]}...")
@@ -325,9 +343,10 @@ def run_health_agent():
             "every aspect of this machine. Run ALL of them to get a complete "
             "picture, then synthesize the results into a clear, actionable report. "
             "Focus on what matters — flag problems, skip noise. You also have "
-            "send_notification, which pushes a phone alert — use it sparingly, "
-            "once at most, and only when the person actually needs to be told "
-            "something right now."
+            "send_notification, which pushes a phone alert — call it exactly "
+            "once, always, at the end. Reflect severity in the title and "
+            "priority rather than deciding whether to send at all; the person "
+            "wants to know the check ran even when there's nothing wrong."
         ),
         tools=ALL_TOOLS + [send_notification],
         messages=[{"role": "user", "content": task}],
