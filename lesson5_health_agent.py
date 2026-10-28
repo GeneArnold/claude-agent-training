@@ -17,9 +17,28 @@ The agent will:
   1. Run checks across all categories (disk, memory, security, etc.)
   2. Analyze the results
   3. Print a prioritized health report
+  4. Push a phone notification (via ntfy) if anything needs attention
+
+One-time setup for notifications:
+  1. Install the ntfy app (iOS/Android) or just open https://ntfy.sh/<topic>
+     in a browser, and subscribe to a topic name of your choosing. Topics on
+     the public ntfy.sh server are secret-by-obscurity — anyone who knows the
+     exact topic name can publish or read it, so pick something unguessable
+     rather than something like "my-health-checks".
+  2. Add that topic name to .env:
+       NTFY_TOPIC=whatever-you-picked
+  3. You'll also need your own API key in .env:
+       ANTHROPIC_API_KEY=your-key-here
+  4. (Optional) Self-hosting ntfy instead of using the public server? Point
+     at it with one more line in .env — nothing else changes:
+       NTFY_SERVER=https://your-ntfy-server.example.com
+  5. Run the agent. If something needs attention, your phone buzzes; if the
+     machine is clean, nothing is sent at all.
 """
 
+import os
 import subprocess
+import urllib.request
 
 import anthropic
 from anthropic import beta_tool
@@ -225,6 +244,53 @@ ALL_TOOLS = [
 ]
 
 
+# --- NOTIFICATION TOOL ---
+#
+# Separate from the health checks above: this is the only tool that reaches
+# *out* from the agent instead of reading the machine. Giving the agent a way
+# to act on its own findings (not just report them to a terminal someone has
+# to be watching) is what turns "a script you run" into "a thing that tells
+# you when it matters".
+
+NTFY_VALID_PRIORITIES = {"min", "low", "default", "high", "urgent"}
+
+
+@beta_tool
+def send_notification(title: str, message: str, priority: str = "default") -> str:
+    """Push a phone/desktop notification via ntfy. Call this AT MOST ONCE,
+    after you've written the full report, and only if the CRITICAL or WARNING
+    sections contain real issues — skip it entirely for an all-clear machine,
+    there's no need to notify someone that nothing is wrong.
+
+    Args:
+        title: Short summary, e.g. "cerebro: 2 critical issues".
+        message: The CRITICAL and WARNING items only, in plain text — not the
+            full report. Keep it to what the person actually needs to see.
+        priority: One of min, low, default, high, urgent. Use "urgent" if
+            CRITICAL items exist, "high" if only WARNING items exist.
+    """
+    topic = os.environ.get("NTFY_TOPIC")
+    if not topic:
+        return "Skipped: NTFY_TOPIC is not set in .env."
+    # Defaults to the public ntfy.sh; set NTFY_SERVER in .env to point at a
+    # self-hosted ntfy instance instead — nothing else here needs to change.
+    server = os.environ.get("NTFY_SERVER", "https://ntfy.sh").rstrip("/")
+    if priority not in NTFY_VALID_PRIORITIES:
+        priority = "default"
+    try:
+        request = urllib.request.Request(
+            f"{server}/{topic}",
+            data=message.encode("utf-8"),
+            headers={"Title": title, "Priority": priority},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=10):
+            pass
+        return f"Notification sent (priority={priority})."
+    except Exception as e:
+        return f"Failed to send notification: {e}"
+
+
 # --- THE AGENT ---
 
 
@@ -243,7 +309,9 @@ def run_health_agent():
         "3. INFO — Current status, no action needed\n"
         "4. RECOMMENDATIONS — Improvements and maintenance suggestions\n\n"
         "Be specific. Include actual numbers (disk %, memory usage, error counts). "
-        "Don't repeat raw command output — interpret it."
+        "Don't repeat raw command output — interpret it.\n\n"
+        "Finally, decide whether to call send_notification. Only call it if "
+        "CRITICAL or WARNING has real content — never for an all-clear report."
     )
 
     print(f"\nTask: {task[:80]}...")
@@ -256,9 +324,12 @@ def run_health_agent():
             "You are a Linux system health analyst. You have tools to check "
             "every aspect of this machine. Run ALL of them to get a complete "
             "picture, then synthesize the results into a clear, actionable report. "
-            "Focus on what matters — flag problems, skip noise."
+            "Focus on what matters — flag problems, skip noise. You also have "
+            "send_notification, which pushes a phone alert — use it sparingly, "
+            "once at most, and only when the person actually needs to be told "
+            "something right now."
         ),
-        tools=ALL_TOOLS,
+        tools=ALL_TOOLS + [send_notification],
         messages=[{"role": "user", "content": task}],
     )
 

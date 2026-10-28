@@ -13,7 +13,7 @@ This project exists because Anthropic has a certification exam (CCA-F) but no st
 | 2d | `lesson2_debug.py` | Debug version with breakpoints for stepping through |
 | 3 | `lesson3_real_tools.py` | Agent with real tools — file I/O, interactive chat |
 | 4 | `lesson4_streaming_ui.py` | Web UI with real-time streaming (FastAPI + SSE) |
-| 5 | `lesson5_health_agent.py` | **A real agent** — full machine health analysis with 12 tools |
+| 5 | `lesson5_health_agent.py` | **A real agent** — full machine health analysis with 12 tools, pushes a phone alert when something's wrong |
 
 ## Quick Start
 
@@ -31,6 +31,13 @@ Create a `.env` file with your API key:
 ANTHROPIC_API_KEY=your-key-here
 ```
 
+For Lesson 5's phone notifications, also add a secret ntfy.sh topic (subscribe
+to the same name in the [ntfy app](https://ntfy.sh/) or a browser tab):
+
+```
+NTFY_TOPIC=pick-something-unguessable
+```
+
 Run any lesson:
 
 ```bash
@@ -45,7 +52,7 @@ python lesson1_manual_loop.py
 
 **Lesson 4:** Put a web UI on the agent. Tokens stream to the browser in real-time. Tool calls appear inline. You see the agent think.
 
-**Lesson 5:** The payoff. A machine health agent that runs 12 system checks (disk, memory, CPU, network, security, Docker, thermal, updates, etc.) and synthesizes a prioritized report. Same pattern as Lesson 2, but solving a real problem.
+**Lesson 5:** The payoff. A machine health agent that runs 12 system checks (disk, memory, CPU, network, security, Docker, thermal, updates, etc.) and synthesizes a prioritized report. Same pattern as Lesson 2, but solving a real problem. It also has a `send_notification` tool wired to [ntfy.sh](https://ntfy.sh/) — Claude decides, based on its own report, whether anything is worth pushing to your phone, and sends nothing at all when the machine is clean. That's the agent acting on its own judgment instead of just printing to a terminal nobody's watching.
 
 ## Requirements
 
